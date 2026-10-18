@@ -1,0 +1,989 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>トルネコ３ 異世界チェックリスト（案4 縦並び 音声入力）</title>
+<style>
+    *, *::before, *::after { box-sizing: border-box; }
+
+    body {
+        margin: 0;
+        padding: 10px 16px 40px;
+        font-family: system-ui, -apple-system, "Segoe UI", "Hiragino Sans", Meiryo, sans-serif;
+        font-size: 12px;
+        line-height: 1.5;
+        color: #212529;
+        background: #fff;
+    }
+
+    input, button, select, textarea { font: inherit; }
+    button, input[type=button], select, label { cursor: pointer; }
+
+    h3, h5 { font-size: 12px; font-weight: bold; margin: 0 0 4px; }
+
+    /* 上部バー */
+    .toolbar {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding-bottom: 8px;
+        border-bottom: 2px solid #343a40;
+    }
+    .toolbar h3 { margin: 0; }
+    .toolbar .legend { margin-left: auto; color: #495057; }
+    .toolbar .legend b { color: #1971c2; font-weight: normal; }
+
+    /* 固定幅をやめ、画面が狭いときは折り返す */
+    .contents {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        gap: 24px;
+        margin-top: 12px;
+    }
+
+    /* アイテム表 */
+    .table { display: table; border-collapse: collapse; }
+    .table_row { display: table-row; }
+    .table_cell {
+        display: table-cell;
+        padding: 1.5px 8px;
+        border-bottom: 1px solid #ccc;
+        vertical-align: middle;
+        white-space: nowrap;
+    }
+    .table_cell.name, .table_cell.note { text-align: left; }
+    .table_cell.sale { text-align: right; }
+
+    /* スクロールしても見出しが残るように固定 */
+    .table_head .table_cell {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        background: #343a40;
+        color: #fff;
+        font-weight: bold;
+        text-align: center;
+    }
+
+    /* 値段識別：マウスを乗せた行と同じ売値の行を強調 */
+    .table_row.same_sale .table_cell { background: #fff3bf; }
+    .table_row:not(.table_head):hover .table_cell { background: #ffd43b; }
+
+    /* 同じ売値で未チェックの候補数 */
+    .rest { margin-left: 4px; font-size: 10px; color: #1971c2; }
+    .rest.zero { color: #adb5bd; }
+
+    /* チェック済みの行はグレー＋取り消し線 */
+    .table_row:has(input:checked) .table_cell {
+        color: #adb5bd;
+        text-decoration: line-through;
+    }
+
+    /* 左：アイテム表 / 右：常に見える固定パネル */
+    .layout { display: flex; align-items: flex-start; gap: 14px; margin-top: 12px; }
+    .layout .contents { flex: 1; margin-top: 0; gap: 14px; min-width: 0; }
+    .contents.cats { display: block; }
+    .layout .table_cell { padding: 1.5px 5px; }
+    .side {
+        position: sticky;
+        top: 0;
+        flex: none;
+        width: auto;
+        max-height: 100vh;
+        overflow-y: auto;
+        padding: 0 4px 12px 12px;
+        border-left: 2px solid #dee2e6;
+    }
+
+    /* 指輪識別グリッド（行：あ〜こ、列：効果） */
+    .ring_grid { border-collapse: collapse; }
+    .ring_grid th, .ring_grid td { border: 1px solid #ced4da; text-align: center; padding: 0; }
+    .ring_grid thead th {
+        background: #343a40;
+        color: #fff;
+        font-weight: normal;
+        font-size: 11px;
+        line-height: 1.2;
+        padding: 3px 2px;
+        vertical-align: bottom;
+    }
+    .ring_grid tbody th { background: #f1f3f5; padding: 0 6px; }
+    .ring_grid td label { display: block; padding: 3px 6px; }
+    .ring_grid td:hover { background: #e7f1ff; }
+    .ring_grid td:has(input:checked) { background: #a5d8ff; }
+    .ring_grid tbody tr:hover th { background: #ffd43b; }
+
+    /* カテゴリを縦に積み、アイテムはタイルにして横に並べる（端で折り返す） */
+    .cat + .cat { margin-top: 12px; }
+    .cat_title {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        margin: 0 0 4px;
+        padding: 2px 8px;
+        background: #343a40;
+        color: #fff;
+        font-size: 12px;
+    }
+    .table.tiles {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+        /* 左上から下へ並べ、下まで行ったら右の列の上へ折り返す（行数はJSで設定） */
+        grid-auto-flow: column;
+        border-left: 1px solid #dee2e6;
+    }
+    .table_row.tile {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 2px 6px;
+        border-right: 1px solid #dee2e6;
+        border-bottom: 1px solid #dee2e6;
+        white-space: nowrap;
+        min-width: 0;
+    }
+    .tile input { margin: 0 2px 0 0; flex: none; }
+    .tile .name { flex: none; }
+    .tile .note { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 11px; color: #868e96; }
+    /* 残数と売値は固定幅＋等幅数字にして、桁数が違っても縦にそろえる（売値が一番右） */
+    .tile .rest,
+    .tile .sale { flex: none; text-align: right; font-variant-numeric: tabular-nums; }
+    .tile .rest { width: 4.6em; margin-left: auto; font-size: 11px; color: #1971c2; }
+    .tile .rest.zero { color: #adb5bd; }
+    .tile .sale { width: 3.4em; font-weight: bold; font-size: 12px; }
+    .table_row.tile.same_sale { background: #fff3bf; }
+    .table_row.tile:hover { background: #ffd43b; }
+    .table_row.tile:has(input:checked) .name,
+    .table_row.tile:has(input:checked) .sale,
+    .table_row.tile:has(input:checked) .note { color: #adb5bd; text-decoration: line-through; }
+
+    /* 絞り込み */
+    .search { display: flex; align-items: center; gap: 6px; }
+    #filter_text { width: 220px; padding: 1px 6px; }
+    #filter_count { color: #1971c2; min-width: 5em; }
+    body.filtering .tile.miss { opacity: .2; }
+    /* 対象外でも、同じ売値のハイライト中とマウスを乗せたマスは見えるようにする */
+    body.filtering .tile.miss.same_sale,
+    body.filtering .tile.miss:hover { opacity: .8; }
+
+
+    .note_box { color: #495057; }
+
+    /* ニフラムカウンター */
+    .counter { display: flex; align-items: center; gap: 4px; margin-top: 4px; }
+    .counter input { width: 70px; text-align: right; }
+    .counter button { min-width: 32px; }
+
+    #memo { width: 100%; }
+
+    section + section { margin-top: 14px; }
+
+    /* 音声入力：聞き取り中はボタンを赤くし、結果は画面左下に出す（レイアウトを崩さないよう固定表示） */
+    #voice_btn.on { background: #e03131; border-color: #e03131; color: #fff; }
+    #voice_log {
+        display: none;
+        position: fixed;
+        left: 16px;
+        bottom: 12px;
+        z-index: 10;
+        max-width: calc(100vw - 32px);
+        padding: 6px 12px;
+        border-radius: 4px;
+        background: #343a40;
+        color: #fff;
+        font-size: 13px;
+    }
+    #voice_log.show { display: block; }
+    #voice_log .heard { color: #ffd43b; margin-right: 10px; }
+    #voice_log .ng { color: #ffa8a8; }
+    /* 音声でチェックしたマスを一瞬光らせる／同名の候補は枠で示す */
+    .voice_hit { animation: voice_flash 1.5s ease-out; }
+    @keyframes voice_flash { from { background: #69db7c; } to { background: transparent; } }
+    .voice_cand { outline: 2px solid #1971c2; outline-offset: -2px; }
+</style>
+</head>
+
+<body>
+    <div class="toolbar">
+        <h3>トルネコ３　異世界チェックリスト</h3>
+        <input type="button" id="clear" value="クリア">
+        <span>チェックリストNo <select id="checklist_no"><option value="1">1</option><option value="2">2</option><option value="3">3</option></select></span>
+        <span class="search">
+            <input type="text" id="filter_text" data-nosave="1" placeholder="絞り込み（/ キーで入力、Esc で消去）" autocomplete="off">
+            <span id="filter_count"></span>
+        </span>
+        <button type="button" id="voice_btn">🎤 音声入力</button>
+        <span class="legend">凡例：右端の太字の数字＝売値　／　<b>残 n/m</b>＝同じ売値のアイテム m 個のうち未チェックが n 個</span>
+    </div>
+    <div id="voice_log"></div>
+
+
+    <div class="layout">
+        <div class="contents cats">
+            <section class="cat">
+                <h4 class="cat_title"><span>草</span></h4>
+                <div class="table tiles" id="kusa_table"></div>
+            </section>
+            <section class="cat">
+                <h4 class="cat_title"><span>壺</span></h4>
+                <div class="table tiles" id="tubo_table"></div>
+            </section>
+            <section class="cat">
+                <h4 class="cat_title"><span>指輪</span></h4>
+                <div class="table tiles" id="ring_table"></div>
+            </section>
+            <section class="cat">
+                <h4 class="cat_title"><span>杖</span></h4>
+                <div class="table tiles" id="wand_table"></div>
+            </section>
+            <section class="cat">
+                <h4 class="cat_title"><span>巻物</span></h4>
+                <div class="table tiles" id="scroll_table"></div>
+            </section>
+        </div>
+
+        <aside class="side">
+            <section>
+                <h3>指輪識別</h3>
+                <table class="ring_grid" id="ring_id"></table>
+            </section>
+            <section>
+                <h3>ニフラムカウンター</h3>
+                巻物出現数（床落ち巻物42（ニフラム含む））
+                <div class="counter">
+                    <input type="number" id="nifuramu_counter" value="0" min="0">
+                    <button id="nifuramu_counter_sub">−</button>
+                    <button id="nifuramu_counter_add">＋</button>
+                </div>
+            </section>
+            <section>
+                <h5>メモ欄</h5>
+                <textarea id="memo" rows="10"></textarea>
+            </section>
+            <section class="note_box">
+                他識別が困難な指輪（特別有用な指輪はないのできにしないでOK）<br>
+                毒消し：毒罠起動などで分かるがリスクが高い<br>
+                傷みよけ：さび罠起動ではうみどり-1だとわからない<br>
+                のろいよけ：シャーマン相手にすればわかるがリスクが高い<br>
+                ハラ守り：ヒトデ相手にすればわかるが面倒<br>
+                会心：会心がでやすくなる。変化限定<br>
+                きれい：変化限定
+            </section>
+        </aside>
+    </div>
+
+    <script>
+
+        // タイル全体を<label>にしているので、タイルのどこをクリックしてもチェックが切り替わる
+        // （元はlabelの中にlabelが入っていたので、入れ子をなくした）
+        function createList(table, list, prefix) {
+            list.forEach(function (element, index) {
+                var id = prefix + '_' + index;
+                var tr = document.createElement("label");
+                tr.className = "table_row tile";
+                tr.dataset.sale = element.sale;
+                tr.dataset.search = normalizeText(element.name + " " + element.sale + " " + element.description);
+                tr.dataset.nums = (element.description.match(/\d+/g) || []).join(",");
+                tr.dataset.tip = element.name + "　売値" + element.sale + (element.description ? "　" + element.description : "");
+                tr.title = tr.dataset.tip;
+                tr.innerHTML =
+                    '<input type="checkbox" id="' + id + '">' +
+                    '<span class="name">' + element.name + '</span>' +
+                    '<span class="note">' + element.description + '</span>' +
+                    '<span class="rest"></span>' +
+                    '<span class="sale">' + element.sale + '</span>';
+                table.appendChild(tr);
+            });
+            addSameSaleHighlight(table);
+        }
+
+        // マウスを乗せた行と同じ売値の行を強調する（クリック不要）
+        function addSameSaleHighlight(table) {
+            if (table.dataset.highlight) return;
+            table.dataset.highlight = "1";
+            function highlight(sale) {
+                table.querySelectorAll(".table_row[data-sale]").forEach(function (row) {
+                    row.classList.toggle("same_sale", sale !== null && row.dataset.sale === sale);
+                });
+            }
+            table.addEventListener("mouseover", function (e) {
+                var row = e.target.closest(".table_row[data-sale]");
+                highlight(row ? row.dataset.sale : null);
+            });
+            table.addEventListener("mouseleave", function () { highlight(null); });
+        }
+
+        // 売値の横に「同じ売値で未チェックの数/同じ売値の総数」を表示する
+        function refreshView() {
+            document.querySelectorAll(".table").forEach(function (table) {
+                var rows = table.querySelectorAll(".table_row[data-sale]");
+                var total = {}, rest = {};
+                rows.forEach(function (row) {
+                    var sale = row.dataset.sale;
+                    total[sale] = (total[sale] || 0) + 1;
+                    if (!row.querySelector("input").checked) rest[sale] = (rest[sale] || 0) + 1;
+                });
+                rows.forEach(function (row) {
+                    var sale = row.dataset.sale;
+                    var badge = row.querySelector(".rest");
+                    var n = rest[sale] || 0;
+                    badge.textContent = total[sale] > 1 ? "残" + n + "/" + total[sale] : "";
+                    badge.classList.toggle("zero", n === 0);
+                    if (row.dataset.tip) {
+                        row.title = row.dataset.tip + (total[sale] > 1 ? "　／　同じ売値で未チェック " + n + "/" + total[sale] : "　／　同じ売値のアイテムはほかにない");
+                    }
+                });
+            });
+        }
+
+        // 検索用に表記ゆれをなくす（全角/半角・カタカナ/ひらがな・大文字/小文字を同一視）
+        function normalizeText(text) {
+            return String(text).normalize("NFKC").toLowerCase().replace(/[\u30a1-\u30f6]/g, function (c) {
+                return String.fromCharCode(c.charCodeAt(0) - 0x60);
+            });
+        }
+
+        // 指輪識別（IDは元と同じ a_1〜ko_10）
+        var ringIdKana = [["a", "あ"], ["i", "い"], ["u", "う"], ["e", "え"], ["o", "お"], ["ka", "か"], ["ki", "き"], ["ku", "く"], ["ke", "け"], ["ko", "こ"]];
+        var ringIdEffects = [[1, "通過"], [2, "へた"], [3, "まがり、ふしぎ、遠投"], [4, "ドラゴン"], [5, "混乱"], [6, "ワナあて"], [7, "しあわせ"], [8, "眠らず"], [9, "人形"], [0, "ザメハ"], [10, "痛恨"]];
+
+        var ringGrid = document.getElementById("ring_id");
+        var gridHtml = '<thead><tr><th></th>';
+        ringIdEffects.forEach(function (eff) {
+            gridHtml += '<th>' + eff[1].replace(/、/g, '<br>') + '</th>';
+        });
+        gridHtml += '</tr></thead><tbody>';
+        ringIdKana.forEach(function (kana) {
+            gridHtml += '<tr><th>' + kana[1] + '</th>';
+            ringIdEffects.forEach(function (eff) {
+                gridHtml += '<td title="' + kana[1] + '：' + eff[1] + '"><label><input type="checkbox" id="' + kana[0] + '_' + eff[0] + '"></label></td>';
+            });
+            gridHtml += '</tr>';
+        });
+        ringGrid.innerHTML = gridHtml + '</tbody>';
+
+        var kusaList = [];
+        kusaList.push({ name: "踊り草", sale: 50, description: "", checked: false });
+        kusaList.push({ name: "火炎草", sale: 50, description: "", checked: false });
+        kusaList.push({ name: "かなしばりのたね", sale: 50, description: "", checked: false });
+        kusaList.push({ name: "でたらめ草", sale: 50, description: "", checked: false });
+        kusaList.push({ name: "目覚まし草", sale: 50, description: "", checked: false });
+        kusaList.push({ name: "ルーラ草", sale: 50, description: "", checked: false });
+        kusaList.push({ name: "胃下垂のたね", sale: 50, description: "店売無", checked: false });
+        kusaList.push({ name: "まどわし草", sale: 75, description: "", checked: false });
+        kusaList.push({ name: "毒草", sale: 75, description: "", checked: false });
+        kusaList.push({ name: "バーサーカーのたね", sale: 75, description: "店売無", checked: false });
+        kusaList.push({ name: "めつぶし草", sale: 100, description: "", checked: false });
+        kusaList.push({ name: "メダパニ草", sale: 100, description: "", checked: false });
+        kusaList.push({ name: "ラリホー草", sale: 100, description: "", checked: false });
+        kusaList.push({ name: "鉄化のたね", sale: 100, description: "店変のみ", checked: false });
+        kusaList.push({ name: "毒消し草", sale: 1, description: "買300", checked: false });
+        kusaList.push({ name: "めぐすり草", sale: 150, description: "", checked: false });
+        kusaList.push({ name: "ふこうのたね", sale: 150, description: "店売無", checked: false });
+        kusaList.push({ name: "すばやさのたね", sale: 170, description: "", checked: false });
+        kusaList.push({ name: "胃拡張のたね", sale: 300, description: "店売無", checked: false });
+        kusaList.push({ name: "胃縮小のたね", sale: 300, description: "店売無", checked: false });
+        kusaList.push({ name: "しんぴの草", sale: 500, description: "", checked: false });
+        kusaList.push({ name: "世界樹の葉", sale: 750, description: "", checked: false });
+        kusaList.push({ name: "薬草", sale: 1000, description: "", checked: false });
+        kusaList.push({ name: "命の草", sale: 2000, description: "", checked: false });
+        kusaList.push({ name: "弟切草", sale: 2500, description: "", checked: false });
+        kusaList.push({ name: "ちからのたね", sale: 2500, description: "店のみ", checked: false });
+        kusaList.push({ name: "しあわせのたね", sale: 2500, description: "", checked: false });
+
+        var kusaTable = document.getElementById("kusa_table");
+
+        createList(kusaTable, kusaList, "kusa");
+
+        var tuboList = [];
+        tuboList.push({ name: "回復", sale: 500, description: "", checked: false });
+        tuboList.push({ name: "水がめ", sale: 500, description: "", checked: false });
+        tuboList.push({ name: "ふつう", sale: 500, description: "店売無", checked: false });
+        tuboList.push({ name: "大砲", sale: 500, description: "店売無", checked: false });
+        tuboList.push({ name: "倉庫", sale: 500, description: "店売無31～", checked: false });
+        tuboList.push({ name: "保存", sale: 750, description: "", checked: false });
+        tuboList.push({ name: "とじこめ", sale: 750, description: "", checked: false });
+        tuboList.push({ name: "インパス", sale: 1200, description: "買2000", checked: false });
+        tuboList.push({ name: "合成", sale: 1500, description: "", checked: false });
+        tuboList.push({ name: "祝福", sale: 1500, description: "～49", checked: false });
+        tuboList.push({ name: "呪い", sale: 1500, description: "", checked: false });
+        tuboList.push({ name: "ワープ", sale: 1500, description: "", checked: false });
+        tuboList.push({ name: "魔物", sale: 1500, description: "店売無", checked: false });
+        tuboList.push({ name: "火薬", sale: 2000, description: "", checked: false });
+        tuboList.push({ name: "すいこみ", sale: 1500, description: "買5000", checked: false });
+        tuboList.push({ name: "へんげ", sale: 1500, description: "店売無", checked: false });
+        tuboList.push({ name: "草の神", sale: 2000, description: "店売無", checked: false });
+        tuboList.push({ name: "うそつき", sale: 2000, description: "買10000", checked: false });
+
+        var tuboTable = document.getElementById("tubo_table");
+
+        createList(tuboTable, tuboList, "tubo");
+
+        var ringList = [];
+        ringList.push({ name: "混乱よけ", sale: 1500, description: "", checked: false });
+        ringList.push({ name: "しあわせ", sale: 2000, description: "", checked: false });
+        ringList.push({ name: "垂れ流し", sale: 2000, description: "", checked: false });
+        ringList.push({ name: "ハラモチ", sale: 2500, description: "", checked: false });
+        ringList.push({ name: "ちから", sale: 2500, description: "", checked: false });
+        ringList.push({ name: "爆発", sale: 2500, description: "", checked: false });
+        ringList.push({ name: "通過", sale: 2500, description: "", checked: false });
+        ringList.push({ name: "眠らず", sale: 2500, description: "", checked: false });
+        ringList.push({ name: "毒消し", sale: 2500, description: "", checked: false });
+        ringList.push({ name: "傷みよけ", sale: 2500, description: "", checked: false });
+        ringList.push({ name: "呪いよけ", sale: 2500, description: "", checked: false });
+        ringList.push({ name: "ハラ守り", sale: 2500, description: "", checked: false });
+        ringList.push({ name: "ミニデーモン", sale: 2500, description: "店変のみ", checked: false });
+        ringList.push({ name: "ワナあて", sale: 2500, description: "", checked: false });
+        ringList.push({ name: "へた投げ", sale: 2500, description: "", checked: false });
+        ringList.push({ name: "まがり", sale: 2500, description: "", checked: false });
+        ringList.push({ name: "不思議投げ", sale: 2500, description: "店無", checked: false });
+        ringList.push({ name: "ルーラ", sale: 1500, description: "", checked: false });
+        ringList.push({ name: "遠投", sale: 3000, description: "", checked: false });
+        ringList.push({ name: "きれい", sale: 3000, description: "変のみ", checked: false });
+        ringList.push({ name: "回復", sale: 5000, description: "", checked: false });
+        ringList.push({ name: "ドラゴン", sale: 5000, description: "", checked: false });
+        ringList.push({ name: "人形よけ", sale: 5000, description: "", checked: false });
+        ringList.push({ name: "ザメハ", sale: 5000, description: "", checked: false });
+        ringList.push({ name: "ハラペコ", sale: 5000, description: "", checked: false });
+        ringList.push({ name: "投げ名人", sale: 5000, description: "変のみ", checked: false });
+        ringList.push({ name: "会心", sale: 7500, description: "変のみ", checked: false });
+        ringList.push({ name: "痛恨", sale: 7500, description: "", checked: false });
+        ringList.push({ name: "見切り", sale: 12500, description: "店変のみ", checked: false });
+
+        var ringTalbe = document.getElementById("ring_table");
+
+        createList(ringTalbe, ringList, "ring");
+
+        var wandList = [];
+        wandList.push({ name: "トンネル", sale: 200, description: "（と）買500", checked: false });
+        wandList.push({ name: "ホイミ", sale: 250, description: "（ほ）", checked: false });
+        wandList.push({ name: "メダパニ", sale: 250, description: "（め）買1200", checked: false });
+        wandList.push({ name: "風", sale: 400, description: "（ぜ）", checked: false });
+        wandList.push({ name: "氷柱", sale: 400, description: "（こ）", checked: false });
+        wandList.push({ name: "砂柱", sale: 400, description: "（す）", checked: false });
+        wandList.push({ name: "火柱", sale: 400, description: "（え）", checked: false });
+        wandList.push({ name: "いかずち", sale: 400, description: "（ず）店変のみ", checked: false });
+        wandList.push({ name: "とびつき", sale: 400, description: "（つ）", checked: false });
+        wandList.push({ name: "場所替え", sale: 400, description: "（し）", checked: false });
+        wandList.push({ name: "バシルーラ", sale: 400, description: "（ば）店無", checked: false });
+        wandList.push({ name: "レミーラ", sale: 400, description: "（れ）店無", checked: false });
+        wandList.push({ name: "ラリホー", sale: 400, description: "（ら）買1200", checked: false });
+        wandList.push({ name: "一時しのぎ", sale: 500, description: "（ち）", checked: false });
+        wandList.push({ name: "へんげ", sale: 500, description: "（へ）", checked: false });
+        wandList.push({ name: "もろは", sale: 500, description: "（も）", checked: false });
+        wandList.push({ name: "かなしばり", sale: 600, description: "（か）", checked: false });
+        wandList.push({ name: "ふきとばし", sale: 600, description: "（ふ）", checked: false });
+        wandList.push({ name: "ボミオス", sale: 600, description: "（ぼ）", checked: false });
+        wandList.push({ name: "ルカニ", sale: 600, description: "（る）", checked: false });
+        wandList.push({ name: "イカリ", sale: 600, description: "（い）店無", checked: false });
+        wandList.push({ name: "痛みわけ", sale: 600, description: "（わ）店無", checked: false });
+        wandList.push({ name: "ひきよせ", sale: 600, description: "（ひ）店無", checked: false });
+        wandList.push({ name: "封印", sale: 500, description: "（う）買1500", checked: false });
+        wandList.push({ name: "おびえ", sale: 1000, description: "（お）", checked: false });
+        wandList.push({ name: "大損", sale: 1000, description: "（ぞ）", checked: false });
+        wandList.push({ name: "クオーター", sale: 1000, description: "（く）店無", checked: false });
+        wandList.push({ name: "身代わり", sale: 1000, description: "（み）買2500", checked: false });
+        wandList.push({ name: "分裂", sale: 1200, description: "（ぶ）", checked: false });
+        wandList.push({ name: "ピオリム", sale: 1200, description: "（ぴ）店無", checked: false });
+        wandList.push({ name: "万能", sale: 1500, description: "（の）", checked: false });
+        wandList.push({ name: "転ばぬ先", sale: 1400, description: "（ころ）買3000", checked: false });
+        wandList.push({ name: "レムオル", sale: 1200, description: "（む）店無", checked: false });
+        wandList.push({ name: "ミミック", sale: 1500, description: "（みく）変のみ", checked: false });
+        wandList.push({ name: "バーサーカー", sale: 1500, description: "（ばー）変のみ", checked: false });
+        wandList.push({ name: "きとうし", sale: 1500, description: "（き）変敵のみ", checked: false });
+        wandList.push({ name: "ようじゅつし", sale: 2000, description: "（よ）変敵のみ", checked: false });
+        wandList.push({ name: "ドルイド", sale: 3000, description: "（ど）変のみ", checked: false });
+        wandList.push({ name: "げんじゅつし", sale: 4000, description: "（げ）変敵のみ", checked: false });
+        wandList.push({ name: "マヌーサ", sale: 2500, description: "（ぬ）", checked: false });
+        wandList.push({ name: "丸得", sale: 1, description: "（まる）買10000", checked: false });
+        wandList.push({ name: "ザキ", sale: 2500, description: "（ざ）店変のみ", checked: false });
+
+        var wandTalbe = document.getElementById("wand_table");
+
+        createList(wandTalbe, wandList, "wand");
+
+        var scrollList = [];
+        scrollList.push({ name: "リレミト", sale: 50, description: "店無", checked: false });
+        scrollList.push({ name: "大部屋", sale: 150, description: "店無", checked: false });
+        scrollList.push({ name: "炎上", sale: 200, description: "", checked: false });
+        scrollList.push({ name: "砂柱", sale: 200, description: "", checked: false });
+        scrollList.push({ name: "氷結", sale: 200, description: "", checked: false });
+        scrollList.push({ name: "水がれ", sale: 200, description: "", checked: false });
+        scrollList.push({ name: "ワナ作動*", sale: 200, description: "店のみ", checked: false });
+        scrollList.push({ name: "聖城", sale: 200, description: "店無", checked: false });
+        scrollList.push({ name: "インパス", sale: 250, description: "", checked: false });
+        scrollList.push({ name: "うしろむき", sale: 250, description: "", checked: false });
+        scrollList.push({ name: "ワナけし", sale: 250, description: "", checked: false });
+        scrollList.push({ name: "レミーラ", sale: 300, description: "買650", checked: false });
+        scrollList.push({ name: "地獄耳", sale: 300, description: "", checked: false });
+        scrollList.push({ name: "千里眼", sale: 300, description: "", checked: false });
+        scrollList.push({ name: "ひきよせ", sale: 300, description: "", checked: false });
+        scrollList.push({ name: "かなしばり", sale: 300, description: "", checked: false });
+        scrollList.push({ name: "はりつけ", sale: 300, description: "", checked: false });
+        scrollList.push({ name: "まものしばり", sale: 300, description: "", checked: false });
+        scrollList.push({ name: "バクスイ", sale: 300, description: "", checked: false });
+        scrollList.push({ name: "メダパニ", sale: 300, description: "", checked: false });
+        scrollList.push({ name: "ルカナン", sale: 300, description: "", checked: false });
+        scrollList.push({ name: "パワーアップ", sale: 300, description: "", checked: false });
+        scrollList.push({ name: "すてみ", sale: 300, description: "", checked: false });
+        scrollList.push({ name: "パン", sale: 300, description: "", checked: false });
+        scrollList.push({ name: "メッキ", sale: 300, description: "", checked: false });
+        scrollList.push({ name: "トラマナ", sale: 300, description: "店無", checked: false });
+        scrollList.push({ name: "ザオラル", sale: 300, description: "店無", checked: false });
+        scrollList.push({ name: "大風", sale: 300, description: "店無", checked: false });
+        scrollList.push({ name: "銀のたてごと", sale: 300, description: "店無", checked: false });
+        scrollList.push({ name: "壷強化", sale: 350, description: "", checked: false });
+        scrollList.push({ name: "中部屋", sale: 350, description: "店無", checked: false });
+        scrollList.push({ name: "イオ*", sale: 500, description: "店変のみ", checked: false });
+        scrollList.push({ name: "時限爆弾", sale: 500, description: "", checked: false });
+        scrollList.push({ name: "くちなし", sale: 500, description: "", checked: false });
+        scrollList.push({ name: "ワナ", sale: 500, description: "", checked: false });
+        scrollList.push({ name: "モンスター*", sale: 500, description: "落なし店21～変50～", checked: false });
+        scrollList.push({ name: "変身*", sale: 500, description: "変のみ", checked: false });
+        scrollList.push({ name: "シャナク", sale: 500, description: "買3000", checked: false });
+        scrollList.push({ name: "バイキルト", sale: 750, description: "", checked: false });
+        scrollList.push({ name: "スカラ", sale: 750, description: "", checked: false });
+        scrollList.push({ name: "ふはつ", sale: 1000, description: "", checked: false });
+        scrollList.push({ name: "ベホマラー", sale: 1250, description: "", checked: false });
+        scrollList.push({ name: "聖域", sale: 1250, description: "店無", checked: false });
+        scrollList.push({ name: "拾えず", sale: 1250, description: "店無", checked: false });
+        scrollList.push({ name: "まものいそぎ", sale: 2500, description: "", checked: false });
+        scrollList.push({ name: "白紙", sale: 2500, description: "店無", checked: false });
+        scrollList.push({ name: "チキン", sale: 1, description: "買20000", checked: false });
+        scrollList.push({ name: "ニフラム*", sale: 1, description: "店無変76～落31～", checked: false });
+
+        var scrollTalbe = document.getElementById("scroll_table");
+
+        createList(scrollTalbe, scrollList, "scroll");
+
+        var STORAGE_KEY = "toruneko_3_checklist_";
+
+        //データロード処理
+        function loadData() {
+            var clistNo = document.getElementById("checklist_no").value;
+            var saveData = window.localStorage.getItem(STORAGE_KEY + clistNo);
+            if (saveData != null) {
+                var loadDataJson = JSON.parse(saveData);
+                for (var i = 0; i < loadDataJson.length; i++) {
+                    var item = document.getElementById(loadDataJson[i].id);
+                    if (item == null) continue;
+                    if (loadDataJson[i].type == "input") {
+                        item.value = loadDataJson[i].value;
+                        item.checked = loadDataJson[i].checked;
+                    } else if (loadDataJson[i].type == "textarea") {
+                        item.value = loadDataJson[i].value;
+                    }
+                }
+            } else {
+                ClearState();
+            }
+            refreshView();
+        }
+        loadData();
+
+        function ClearState() {
+            //チェックボックス全削除
+            var checkBoxes = document.getElementsByTagName("input");
+            for (var i = 0; i < checkBoxes.length; i++) {
+                checkBoxes[i].checked = false;
+            }
+
+            //ニフラムカウンター初期化
+            document.getElementById("nifuramu_counter").value = 0;
+
+            //メモ初期化
+            document.getElementById("memo").value = "";
+
+            var listNo = document.getElementById("checklist_no").value;
+            window.localStorage.removeItem(STORAGE_KEY + listNo);
+            refreshView();
+        }
+
+        //クリア処理（誤操作防止のため確認を挟む）
+        document.getElementById("clear").addEventListener("click", function () {
+            var listNo = document.getElementById("checklist_no").value;
+            if (window.confirm("チェックリストNo" + listNo + " をクリアしますか？")) {
+                ClearState();
+            }
+        });
+
+        //ニフラムカウンター加減算処理（値を変えたら保存する）
+        function addNifuramu(delta) {
+            var counter = document.getElementById("nifuramu_counter");
+            var value = (parseInt(counter.value) || 0) + delta;
+            counter.value = Math.max(0, value);
+            saveCheckListData();
+        }
+        document.getElementById("nifuramu_counter_add").addEventListener("click", function () { addNifuramu(1); });
+        document.getElementById("nifuramu_counter_sub").addEventListener("click", function () { addNifuramu(-1); });
+
+        //データ保存処理（保存形式は元と同じ）
+        function saveCheckListData() {
+            var saveDataJson = [];
+
+            var items = document.getElementsByTagName("input");
+            for (var i = 0; i < items.length; i++) {
+                if (items[i].dataset.nosave) continue;
+                saveDataJson.push({
+                    id: items[i].id
+                    , checked: items[i].checked
+                    , value: items[i].value
+                    , type: "input"
+                });
+            }
+
+            saveDataJson.push({
+                id: "memo"
+                , type: "textarea"
+                , value: document.getElementById("memo").value
+            });
+            var listNo = document.getElementById("checklist_no").value;
+            window.localStorage.setItem(STORAGE_KEY + listNo, JSON.stringify(saveDataJson));
+            refreshView();
+        }
+
+        var cbs = document.getElementsByTagName("input");
+        for (var i = 0; i < cbs.length; i++) {
+            if (cbs[i].dataset.nosave) continue;
+            cbs[i].addEventListener("change", saveCheckListData);
+        }
+        //メモは入力するたびに保存（タブを閉じても消えないように）
+        document.getElementById("memo").addEventListener("input", saveCheckListData);
+
+        document.getElementById("checklist_no").addEventListener("change", loadData);
+
+        //縦並びの行数設定：列数は横並びのとき（auto-fill, 最小240px）と同じ計算で求め、行数＝アイテム数÷列数（切り上げ）
+        var TILE_MIN_WIDTH = 240;
+        function layoutTiles() {
+            document.querySelectorAll(".table.tiles").forEach(function (grid) {
+                var cols = Math.max(1, Math.floor(grid.clientWidth / TILE_MIN_WIDTH));
+                var rows = Math.ceil(grid.children.length / cols);
+                grid.style.gridTemplateRows = "repeat(" + rows + ", auto)";
+            });
+        }
+        layoutTiles();
+        if (window.ResizeObserver) {
+            new ResizeObserver(layoutTiles).observe(document.querySelector(".contents.cats"));
+        } else {
+            window.addEventListener("resize", layoutTiles);
+        }
+
+        //絞り込み処理（対象外は薄く表示する。数字だけの入力は売値・備考の数字と完全一致）
+        var filterText = document.getElementById("filter_text");
+        var filterCount = document.getElementById("filter_count");
+
+        function applyFilter() {
+            var q = normalizeText(filterText.value).trim();
+            var numOnly = /^\d+$/.test(q);
+            var count = 0;
+
+            document.querySelectorAll(".tile").forEach(function (row) {
+                var hit = true;
+                if (q !== "") {
+                    if (numOnly) {
+                        hit = row.dataset.sale === q || row.dataset.nums.split(",").indexOf(q) >= 0;
+                    } else {
+                        hit = row.dataset.search.indexOf(q) >= 0;
+                    }
+                }
+                row.classList.toggle("miss", q !== "" && !hit);
+                if (q !== "" && hit) count++;
+            });
+
+            document.body.classList.toggle("filtering", q !== "");
+            filterCount.textContent = q !== "" ? "該当 " + count + " 件" : "";
+        }
+
+        filterText.addEventListener("input", applyFilter);
+
+        // 「/」で検索欄へ、Escで入力を消す（もう一度Escで検索欄から抜ける）
+        document.addEventListener("keydown", function (e) {
+            var tag = document.activeElement ? document.activeElement.tagName : "";
+            if (e.key === "/" && tag !== "INPUT" && tag !== "TEXTAREA" && tag !== "SELECT") {
+                e.preventDefault();
+                filterText.focus();
+                filterText.select();
+            }
+        });
+        filterText.addEventListener("keydown", function (e) {
+            if (e.key !== "Escape") return;
+            if (filterText.value !== "") {
+                filterText.value = "";
+                applyFilter();
+            } else {
+                filterText.blur();
+            }
+        });
+        applyFilter();
+
+        //===== 音声入力 =====
+        //Chrome / Edge の Web Speech API を使う（音声はブラウザ提供元のサーバーで文字に変換されるのでネット接続が必要）
+        //「○○チェック」でアイテム、「あ 通過 チェック」で指輪識別、「ニフラム プラス／マイナス」でカウンターを操作する
+
+        //音声認識は漢字名をひらがなで返したり別の漢字で返したりするので、漢字を含む名前には読み（と、ありがちな別表記）を登録しておく
+        var VOICE_READINGS = {
+            "踊り草": ["おどりそう"], "火炎草": ["かえんそう"], "でたらめ草": ["でたらめそう"], "目覚まし草": ["めざましそう", "目覚ましそう"],
+            "ルーラ草": ["るーらそう"], "胃下垂のたね": ["いかすいのたね"], "まどわし草": ["まどわしそう", "惑わし草"], "毒草": ["どくそう"],
+            "めつぶし草": ["めつぶしそう", "目潰し草"], "メダパニ草": ["めだぱにそう"], "ラリホー草": ["らりほーそう"], "鉄化のたね": ["てっかのたね"],
+            "毒消し草": ["どくけしそう"], "めぐすり草": ["めぐすりそう", "目薬草"], "ふこうのたね": ["不幸のたね"], "すばやさのたね": ["素早さのたね"],
+            "胃拡張のたね": ["いかくちょうのたね"], "胃縮小のたね": ["いしゅくしょうのたね"], "しんぴの草": ["しんぴのくさ", "神秘の草"],
+            "世界樹の葉": ["せかいじゅのは"], "薬草": ["やくそう"], "命の草": ["いのちのくさ"], "弟切草": ["おとぎりそう"],
+            "ちからのたね": ["力のたね"], "しあわせのたね": ["幸せのたね"],
+            "回復": ["かいふく"], "水がめ": ["みずがめ", "水瓶"], "ふつう": ["普通"], "大砲": ["たいほう"], "倉庫": ["そうこ"], "保存": ["ほぞん"],
+            "とじこめ": ["閉じ込め"], "合成": ["ごうせい"], "祝福": ["しゅくふく"], "呪い": ["のろい"], "魔物": ["まもの"], "火薬": ["かやく"],
+            "すいこみ": ["吸い込み"], "草の神": ["くさのかみ"], "うそつき": ["嘘つき"],
+            "混乱よけ": ["こんらんよけ", "混乱避け"], "しあわせ": ["幸せ"], "垂れ流し": ["たれながし"], "ハラモチ": ["腹持ち"], "ちから": ["力"],
+            "爆発": ["ばくはつ"], "通過": ["つうか"], "眠らず": ["ねむらず"], "毒消し": ["どくけし"], "傷みよけ": ["いたみよけ", "痛みよけ"],
+            "呪いよけ": ["のろいよけ", "呪い避け"], "ハラ守り": ["はらまもり", "腹守り"], "ワナあて": ["罠当て", "わな当て"], "へた投げ": ["へたなげ", "下手投げ"],
+            "まがり": ["曲がり"], "不思議投げ": ["ふしぎなげ"], "遠投": ["えんとう"], "きれい": ["綺麗"], "人形よけ": ["にんぎょうよけ"],
+            "ハラペコ": ["腹ペコ"], "投げ名人": ["なげめいじん"], "会心": ["かいしん"], "痛恨": ["つうこん"], "見切り": ["みきり"],
+            "風": ["かぜ"], "氷柱": ["ひょうちゅう", "つらら"], "砂柱": ["すなばしら"], "火柱": ["ひばしら"], "いかずち": ["雷"],
+            "とびつき": ["飛びつき"], "場所替え": ["ばしょがえ", "場所変え"], "一時しのぎ": ["いちじしのぎ"], "もろは": ["諸刃"],
+            "かなしばり": ["金縛り"], "ふきとばし": ["吹き飛ばし"], "痛みわけ": ["いたみわけ", "痛み分け"], "ひきよせ": ["引き寄せ"],
+            "封印": ["ふういん"], "おびえ": ["怯え"], "大損": ["おおぞん"], "身代わり": ["みがわり"], "分裂": ["ぶんれつ"], "万能": ["ばんのう"],
+            "転ばぬ先": ["ころばぬさき"], "ようじゅつし": ["妖術師"], "きとうし": ["祈祷師"], "げんじゅつし": ["幻術師"], "丸得": ["まるとく"],
+            "大部屋": ["おおべや"], "炎上": ["えんじょう"], "氷結": ["ひょうけつ"], "水がれ": ["みずがれ", "水枯れ"], "ワナ作動*": ["わなさどう", "罠作動"],
+            "聖城": ["せいじょう"], "うしろむき": ["後ろ向き"], "ワナけし": ["罠消し"], "地獄耳": ["じごくみみ"], "千里眼": ["せんりがん"],
+            "はりつけ": ["張り付け", "貼り付け"], "まものしばり": ["魔物しばり", "魔物縛り"], "すてみ": ["捨て身"], "銀のたてごと": ["ぎんのたてごと", "銀の竪琴"],
+            "壷強化": ["つぼきょうか"], "中部屋": ["なかべや", "ちゅうべや"], "時限爆弾": ["じげんばくだん"], "くちなし": ["口無し"],
+            "変身*": ["へんしん"], "聖域": ["せいいき"], "拾えず": ["ひろえず"], "まものいそぎ": ["魔物急ぎ"], "白紙": ["はくし"]
+        };
+
+        //音声用の照合キー：表記ゆれに加えて空白・記号と「の」を消す（「杖のメダパニ」「しあわせの種」のように「の」が入るかどうかがぶれるため）
+        function voiceKey(text) {
+            return normalizeText(text)
+                .replace(/[\s、。，．,.!！?？・*＊～~（）()「」『』]/g, "")
+                .replace(/壷/g, "壺").replace(/巻き物/g, "巻物").replace(/種/g, "たね").replace(/罠/g, "わな")
+                .replace(/の/g, "");
+        }
+
+        //カテゴリ名（「杖のメダパニ」「メダパニの杖」のように前後どちらに付いてもよい）
+        var VOICE_CATS = [
+            { prefix: "kusa", label: "草", list: kusaList, words: ["草", "くさ"] },
+            { prefix: "tubo", label: "壺", list: tuboList, words: ["壺", "つぼ"] },
+            { prefix: "ring", label: "指輪", list: ringList, words: ["指輪", "ゆびわ", "りんぐ"] },
+            { prefix: "wand", label: "杖", list: wandList, words: ["杖", "つえ"] },
+            { prefix: "scroll", label: "巻物", list: scrollList, words: ["巻物", "まきもの"] }
+        ];
+        var voiceItems = [];
+        VOICE_CATS.forEach(function (cat) {
+            cat.words = cat.words.map(voiceKey);
+            cat.items = [];
+            cat.list.forEach(function (item, index) {
+                var entry = {
+                    label: cat.label + "／" + item.name.replace(/\*/g, ""),
+                    keys: [item.name].concat(VOICE_READINGS[item.name] || []).map(voiceKey),
+                    input: document.getElementById(cat.prefix + "_" + index)
+                };
+                cat.items.push(entry);
+                voiceItems.push(entry);
+            });
+        });
+
+        //完全一致を優先し、なければ部分一致（2文字以上）で探す
+        function findVoiceItems(q, items) {
+            var exact = items.filter(function (it) { return it.keys.indexOf(q) >= 0; });
+            if (exact.length || q.length < 2) return exact;
+            return items.filter(function (it) {
+                return it.keys.some(function (k) { return k.indexOf(q) >= 0 || (k.length >= 2 && q.indexOf(k) >= 0); });
+            });
+        }
+
+        //全カテゴリで完全一致 → カテゴリ名を外してそのカテゴリ内で検索 → 全カテゴリで部分一致 の順に探す
+        function resolveVoiceItem(q) {
+            var exact = voiceItems.filter(function (it) { return it.keys.indexOf(q) >= 0; });
+            if (exact.length) return exact;
+            for (var i = 0; i < VOICE_CATS.length; i++) {
+                var cat = VOICE_CATS[i];
+                for (var j = 0; j < cat.words.length; j++) {
+                    var w = cat.words[j], rest = null;
+                    if (q.length > w.length && q.indexOf(w) === 0) rest = q.slice(w.length);
+                    else if (q.length > w.length && q.slice(-w.length) === w) rest = q.slice(0, -w.length);
+                    if (rest === null) continue;
+                    var hits = findVoiceItems(rest, cat.items);
+                    if (hits.length) return hits;
+                }
+            }
+            return findVoiceItems(q, voiceItems);
+        }
+
+        //指輪識別グリッド：「あ 通過」のように 行の仮名＋効果 で指定する
+        //一文字の仮名は漢字（絵・木・子など）で返ってきやすいので、よくある変換結果も受け付ける
+        var VOICE_RING_KANA = {
+            a: ["あ", "亜"], i: ["い", "胃", "伊"], u: ["う", "鵜", "卯"], e: ["え", "絵", "江"], o: ["お", "尾"],
+            ka: ["か", "蚊", "化"], ki: ["き", "木", "気", "機"], ku: ["く", "区", "九"], ke: ["け", "毛"], ko: ["こ", "子", "小", "個"]
+        };
+        var VOICE_RING_EFFECTS = {
+            1: ["通過"], 2: ["へた", "へた投げ", "下手", "下手投げ"], 3: ["まがり", "曲がり", "ふしぎ", "不思議", "不思議投げ", "遠投", "えんとう"],
+            4: ["ドラゴン"], 5: ["混乱", "こんらん", "混乱よけ"], 6: ["ワナあて", "罠当て", "わな当て"], 7: ["しあわせ", "幸せ"],
+            8: ["眠らず", "ねむらず"], 9: ["人形", "にんぎょう", "人形よけ"], 0: ["ザメハ"], 10: ["痛恨", "つうこん"]
+        };
+        function resolveVoiceRingGrid(q) {
+            q = q.replace(/^(指輪|ゆびわ)/, "");
+            for (var k = 0; k < ringIdKana.length; k++) {
+                var kanaId = ringIdKana[k][0], spellings = VOICE_RING_KANA[kanaId];
+                for (var s = 0; s < spellings.length; s++) {
+                    if (q.indexOf(spellings[s]) !== 0) continue;
+                    var rest = q.slice(spellings[s].length);
+                    for (var eff in VOICE_RING_EFFECTS) {
+                        if (VOICE_RING_EFFECTS[eff].map(voiceKey).indexOf(rest) < 0) continue;
+                        var effName = ringIdEffects.filter(function (e) { return String(e[0]) === eff; })[0][1];
+                        return { input: document.getElementById(kanaId + "_" + eff), label: "指輪識別 " + ringIdKana[k][1] + "：" + effName };
+                    }
+                }
+            }
+            return null;
+        }
+
+        //聞き取った文を解釈する（ここでは画面を変えず、何をするかだけ返す）
+        function interpretVoice(text) {
+            var q = voiceKey(text);
+            if (q.indexOf("にふらむ") >= 0) {
+                if (/ぷらす|たす|足す|ふやす|増やす|\+/.test(q)) return { ok: true, nifuramu: 1, msg: "ニフラムカウンター ＋1" };
+                if (/まいなす|ひく|引く|へらす|減らす|-|−/.test(q)) return { ok: true, nifuramu: -1, msg: "ニフラムカウンター −1" };
+            }
+            //雑談やゲーム音を拾って勝手にチェックしないよう、「チェック」と言ったときだけ反応する
+            var m = q.match(/^(.*?)(ちぇっく|check)/);
+            if (!m) return { ok: false, msg: "「チェック」が聞き取れなかったので何もしません" };
+            var target = m[1].replace(/を$/, "");
+            if (!target) return { ok: false, msg: "何をチェックするか聞き取れませんでした" };
+
+            var cell = resolveVoiceRingGrid(target);
+            if (cell) return { ok: true, targets: [cell], msg: cell.label };
+
+            var hits = resolveVoiceItem(target);
+            if (hits.length === 1) return { ok: true, targets: hits, msg: hits[0].label };
+            if (hits.length > 1) {
+                return {
+                    ok: false, cands: hits,
+                    msg: "候補が複数あります：" + hits.slice(0, 6).map(function (h) { return h.label; }).join("、") + (hits.length > 6 ? " ほか" : "") +
+                        "　→「杖のメダパニ」のようにカテゴリも言ってください"
+                };
+            }
+            return { ok: false, msg: "該当するアイテムが見つかりません" };
+        }
+
+        var voiceBtn = document.getElementById("voice_btn");
+        var voiceLog = document.getElementById("voice_log");
+        var voiceCandTimer = null;
+
+        function showVoiceLog(heard, msg, ng) {
+            voiceLog.innerHTML = "";
+            if (heard) {
+                var h = document.createElement("span");
+                h.className = "heard";
+                h.textContent = "「" + heard + "」";
+                voiceLog.appendChild(h);
+            }
+            var m = document.createElement("span");
+            if (ng) m.className = "ng";
+            m.textContent = msg;
+            voiceLog.appendChild(m);
+            voiceLog.classList.add("show");
+        }
+
+        function clearVoiceCands() {
+            document.querySelectorAll(".voice_cand").forEach(function (el) { el.classList.remove("voice_cand"); });
+        }
+
+        //チェックしたマスを光らせ、画面外なら見える位置までスクロールする
+        function flashVoiceTarget(input) {
+            var box = input.closest(".tile, td");
+            box.classList.remove("voice_hit");
+            void box.offsetWidth; //アニメーションを最初からやり直すため
+            box.classList.add("voice_hit");
+            box.scrollIntoView({ block: "nearest", behavior: "smooth" });
+        }
+
+        function runVoice(result, heard) {
+            clearVoiceCands();
+            if (result.nifuramu) {
+                addNifuramu(result.nifuramu);
+                showVoiceLog(heard, result.msg + "（現在 " + document.getElementById("nifuramu_counter").value + "）");
+                return;
+            }
+            if (result.targets) {
+                var already = result.targets[0].input.checked;
+                result.targets.forEach(function (t) {
+                    t.input.checked = true;
+                    flashVoiceTarget(t.input);
+                });
+                saveCheckListData(); //プログラムからチェックしても change は発生しないので、ここで保存する
+                showVoiceLog(heard, result.msg + (already ? " は既にチェック済みです" : " をチェックしました"));
+                return;
+            }
+            if (result.cands) {
+                result.cands.forEach(function (c) { c.input.closest(".tile").classList.add("voice_cand"); });
+                clearTimeout(voiceCandTimer);
+                voiceCandTimer = setTimeout(clearVoiceCands, 8000);
+            }
+            showVoiceLog(heard, result.msg, true);
+        }
+
+        var Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        var recognition = null;
+        var voiceOn = false;
+
+        function setVoice(on) {
+            voiceOn = on;
+            voiceBtn.classList.toggle("on", on);
+            voiceBtn.textContent = on ? "🎤 聞き取り中（押すと停止）" : "🎤 音声入力";
+            if (on) {
+                try { recognition.start(); } catch (err) { /* すでに開始済みのときは例外になるので無視 */ }
+                showVoiceLog("", "話しかけてください（例：「メダパニの杖チェック」「あ 通過 チェック」「ニフラム プラス」）");
+            } else {
+                recognition.stop();
+                voiceLog.classList.remove("show");
+            }
+        }
+
+        if (!Recognition) {
+            voiceBtn.disabled = true;
+            voiceBtn.title = "このブラウザは音声認識に対応していません（Chrome か Edge で開いてください）";
+        } else {
+            recognition = new Recognition();
+            recognition.lang = "ja-JP";
+            recognition.continuous = true;
+            recognition.interimResults = true;
+            recognition.maxAlternatives = 5; //第1候補で見つからなくても、第2候補以降で一致すればそちらを使う
+
+            recognition.onresult = function (e) {
+                for (var i = e.resultIndex; i < e.results.length; i++) {
+                    var res = e.results[i];
+                    if (!res.isFinal) {
+                        showVoiceLog(res[0].transcript + "…", "");
+                        continue;
+                    }
+                    var best = null, heard = res[0].transcript;
+                    for (var j = 0; j < res.length; j++) {
+                        var r = interpretVoice(res[j].transcript);
+                        if (r.ok) { best = r; heard = res[j].transcript; break; }
+                        if (!best || (r.cands && !best.cands)) { best = r; heard = res[j].transcript; }
+                    }
+                    runVoice(best, heard);
+                }
+            };
+            recognition.onerror = function (e) {
+                if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+                    setVoice(false);
+                    showVoiceLog("", "マイクの使用が許可されていません（アドレスバー左のアイコンから許可してください）", true);
+                } else if (e.error === "network") {
+                    setVoice(false);
+                    showVoiceLog("", "音声認識サーバーに接続できません（インターネット接続を確認してください）", true);
+                }
+                //no-speech（無音）や aborted は日常的に起きるので無視し、onend で再開する
+            };
+            //しばらく無音だとブラウザ側で認識が止まるので、ONの間は自動で再開する
+            recognition.onend = function () {
+                if (voiceOn) {
+                    try { recognition.start(); } catch (err) { }
+                }
+            };
+            voiceBtn.addEventListener("click", function () { setVoice(!voiceOn); });
+        }
+
+    </script>
+</body>
+
+</html>
